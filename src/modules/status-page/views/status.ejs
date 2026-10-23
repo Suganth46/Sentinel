@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= slug %>'s Status — Sentinel</title>
+  <meta name="description" content="Real-time uptime status for <%= slug %>'s services, powered by Sentinel.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0f1117;
+      --surface: #1a1d27;
+      --border:  #2a2d3a;
+      --text:    #e2e8f0;
+      --muted:   #6b7280;
+      --up:      #22c55e;
+      --down:    #ef4444;
+      --unknown: #6b7280;
+      --accent:  #6366f1;
+    }
+
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: 'Inter', sans-serif; font-size: 15px;
+      min-height: 100vh; padding: 0 16px;
+    }
+
+    header {
+      max-width: 800px; margin: 0 auto;
+      padding: 48px 0 32px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    header h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 6px; }
+    header p  { color: var(--muted); font-size: 0.9rem; }
+
+    .overall-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 14px; border-radius: 999px; font-weight: 600; font-size: 0.85rem;
+      margin-top: 16px;
+    }
+    .badge-up   { background: rgba(34,197,94,.15); color: var(--up);    border: 1px solid rgba(34,197,94,.3); }
+    .badge-down { background: rgba(239,68,68,.15);  color: var(--down);  border: 1px solid rgba(239,68,68,.3);  }
+    .badge-dot  { width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: pulse 2s infinite; }
+
+    @keyframes pulse {
+      0%,100% { opacity: 1; } 50% { opacity: .4; }
+    }
+
+    main { max-width: 800px; margin: 0 auto; padding: 32px 0 64px; }
+
+    .monitors-list { display: flex; flex-direction: column; gap: 16px; }
+
+    .monitor-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 20px 24px;
+      transition: border-color 0.2s;
+    }
+    .monitor-card:hover { border-color: var(--accent); }
+
+    .monitor-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 14px; gap: 12px; flex-wrap: wrap;
+    }
+
+    .monitor-name { font-weight: 600; font-size: 1rem; }
+    .monitor-url  { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+
+    .status-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 12px; border-radius: 999px; font-size: 0.78rem; font-weight: 600;
+      white-space: nowrap;
+    }
+    .pill-up      { background: rgba(34,197,94,.1);  color: var(--up);    border: 1px solid rgba(34,197,94,.25); }
+    .pill-down    { background: rgba(239,68,68,.1);   color: var(--down);  border: 1px solid rgba(239,68,68,.25);  }
+    .pill-unknown { background: rgba(107,114,128,.1); color: var(--muted); border: 1px solid rgba(107,114,128,.25); }
+
+    .stats-row {
+      display: flex; gap: 24px; margin-bottom: 14px; flex-wrap: wrap;
+    }
+
+    .stat-item { display: flex; flex-direction: column; gap: 2px; }
+    .stat-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-value { font-size: 1rem; font-weight: 600; }
+
+    /* 90-day uptime bar strip */
+    .uptime-bars {
+      display: flex; gap: 2px; height: 28px; align-items: flex-end;
+      margin-top: 4px;
+    }
+    .uptime-bar {
+      flex: 1; border-radius: 2px; min-width: 3px; height: 100%;
+      transition: opacity 0.2s;
+    }
+    .uptime-bar:hover { opacity: 0.7; }
+
+    .bars-label {
+      display: flex; justify-content: space-between;
+      font-size: 0.7rem; color: var(--muted); margin-top: 4px;
+    }
+
+    .incident-banner {
+      display: flex; align-items: center; gap: 8px;
+      background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.2);
+      border-radius: 8px; padding: 10px 14px; margin-top: 12px;
+      font-size: 0.83rem; color: #fca5a5;
+    }
+
+    footer {
+      text-align: center; padding: 32px 0;
+      font-size: 0.8rem; color: var(--muted);
+      border-top: 1px solid var(--border);
+      max-width: 800px; margin: 0 auto;
+    }
+
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1><%= slug %>'s Status</h1>
+  <p>Last updated: <span id="last-updated"></span></p>
+  <%
+    const allUp = monitors.every(m => m.status === 'up');
+    const anyDown = monitors.some(m => m.status === 'down');
+  %>
+  <span class="overall-badge <%= anyDown ? 'badge-down' : 'badge-up' %>">
+    <span class="badge-dot"></span>
+    <%= anyDown ? 'Some services are degraded' : 'All systems operational' %>
+  </span>
+</header>
+
+<main>
+  <div class="monitors-list">
+    <% for (const m of monitors) { %>
+    <div class="monitor-card">
+      <div class="monitor-header">
+        <div>
+          <div class="monitor-name"><%= m.name %></div>
+          <div class="monitor-url"><%= m.url %></div>
+        </div>
+        <span class="status-pill pill-<%= m.status %>">
+          <span style="width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block"></span>
+          <%= m.status.toUpperCase() %>
+        </span>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-item">
+          <span class="stat-label">30-day Uptime</span>
+          <span class="stat-value">
+            <%= m.stats.uptime_pct != null ? m.stats.uptime_pct + '%' : '—' %>
+          </span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Avg Latency</span>
+          <span class="stat-value">
+            <%= m.stats.avg_latency_ms != null ? m.stats.avg_latency_ms + ' ms' : '—' %>
+          </span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Check Interval</span>
+          <span class="stat-value"><%= Math.round(m.interval_seconds / 60) %> min</span>
+        </div>
+      </div>
+
+      <!-- 90-day uptime bar chart -->
+      <% if (m.daily_uptime && m.daily_uptime.length > 0) { %>
+      <div class="uptime-bars">
+        <% for (const day of m.daily_uptime) {
+             const pct = parseFloat(day.uptime_pct) || 0;
+             const color = pct >= 99 ? '#22c55e' : pct >= 95 ? '#f59e0b' : pct > 0 ? '#ef4444' : '#374151';
+             const heightPct = Math.max(10, pct);
+        %>
+        <div class="uptime-bar"
+             style="background:<%= color %>; height:<%= heightPct %>%"
+             title="<%= day.day %>: <%= day.uptime_pct %>% uptime"></div>
+        <% } %>
+      </div>
+      <div class="bars-label">
+        <span>90 days ago</span>
+        <span>Today</span>
+      </div>
+      <% } %>
+
+      <% if (m.open_incident) { %>
+      <div class="incident-banner">
+        ⚠️ Incident ongoing since
+        <%= new Date(m.open_incident.started_at).toUTCString() %>
+        <% if (m.open_incident.cause) { %> — <%= m.open_incident.cause %><% } %>
+      </div>
+      <% } %>
+    </div>
+    <% } %>
+
+    <% if (monitors.length === 0) { %>
+    <div style="text-align:center;padding:48px;color:var(--muted)">
+      No public monitors configured yet.
+    </div>
+    <% } %>
+  </div>
+</main>
+
+<footer>
+  Powered by <a href="https://github.com/Suganth46/Sentinel" target="_blank">Sentinel</a>
+  &nbsp;·&nbsp; <a href="/status/<%= slug %>.json">JSON API</a>
+</footer>
+
+<script>
+  document.getElementById('last-updated').textContent = new Date().toLocaleString();
+</script>
+</body>
+</html>

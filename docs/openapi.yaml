@@ -1,0 +1,357 @@
+openapi: 3.1.0
+info:
+  title: Sentinel API
+  description: |
+    Uptime monitoring service. Register URLs, detect incidents via consecutive-failure logic,
+    and receive email/Telegram alerts. Public status pages show uptime and latency.
+  version: 1.0.0
+  contact:
+    name: Sentinel
+    url: https://github.com/Suganth46/Sentinel
+
+servers:
+  - url: /api/v1
+    description: Current server
+
+tags:
+  - name: Auth
+    description: Registration, login, and profile
+  - name: Monitors
+    description: Monitor CRUD and check history
+  - name: Stats
+    description: Uptime and latency statistics
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:    { type: string, example: VALIDATION_ERROR }
+            message: { type: string }
+            details: { type: array, items: { type: object } }
+
+    User:
+      type: object
+      properties:
+        id:               { type: string, format: uuid }
+        email:            { type: string, format: email }
+        slug:             { type: string, example: my-status-page }
+        telegram_chat_id: { type: string, nullable: true }
+        created_at:       { type: string, format: date-time }
+
+    Monitor:
+      type: object
+      properties:
+        id:                  { type: string, format: uuid }
+        user_id:             { type: string, format: uuid }
+        name:                { type: string, example: My API }
+        url:                 { type: string, format: uri }
+        method:              { type: string, enum: [GET, HEAD] }
+        interval_seconds:    { type: integer, example: 300 }
+        timeout_ms:          { type: integer, example: 10000 }
+        expected_status:     { type: integer, example: 200 }
+        failure_threshold:   { type: integer, example: 3 }
+        is_active:           { type: boolean }
+        is_public:           { type: boolean }
+        status:              { type: string, enum: [unknown, up, down] }
+        consecutive_failures:{ type: integer }
+        next_check_at:       { type: string, format: date-time }
+        last_checked_at:     { type: string, format: date-time, nullable: true }
+        created_at:          { type: string, format: date-time }
+
+    Check:
+      type: object
+      properties:
+        id:         { type: integer }
+        monitor_id: { type: string, format: uuid }
+        success:    { type: boolean }
+        status_code:{ type: integer, nullable: true }
+        latency_ms: { type: integer, nullable: true }
+        error:      { type: string, nullable: true }
+        checked_at: { type: string, format: date-time }
+
+    Incident:
+      type: object
+      properties:
+        id:          { type: integer }
+        monitor_id:  { type: string, format: uuid }
+        started_at:  { type: string, format: date-time }
+        resolved_at: { type: string, format: date-time, nullable: true }
+        cause:       { type: string, nullable: true }
+
+security:
+  - BearerAuth: []
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, slug]
+              properties:
+                email:    { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                slug:     { type: string, pattern: '^[a-z0-9-]+$', minLength: 3, maxLength: 32 }
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:  { $ref: '#/components/schemas/User' }
+                  token: { type: string }
+        '409': { description: Email or slug already taken, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Login and receive a JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:    { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: JWT returned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:  { $ref: '#/components/schemas/User' }
+                  token: { type: string }
+        '401': { description: Invalid credentials }
+
+  /me:
+    get:
+      tags: [Auth]
+      summary: Get current user profile
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: '#/components/schemas/User' }
+    patch:
+      tags: [Auth]
+      summary: Update profile (slug or Telegram chat ID)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                slug:             { type: string }
+                telegram_chat_id: { type: string }
+      responses:
+        '200':
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: '#/components/schemas/User' }
+
+  /monitors:
+    get:
+      tags: [Monitors]
+      summary: List all monitors for the current user
+      responses:
+        '200':
+          description: Monitor list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  monitors:
+                    type: array
+                    items: { $ref: '#/components/schemas/Monitor' }
+    post:
+      tags: [Monitors]
+      summary: Create a new monitor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, url]
+              properties:
+                name:              { type: string }
+                url:               { type: string, format: uri }
+                method:            { type: string, enum: [GET, HEAD], default: GET }
+                interval_seconds:  { type: integer, minimum: 60, maximum: 3600, default: 300 }
+                timeout_ms:        { type: integer, minimum: 1000, maximum: 30000, default: 10000 }
+                expected_status:   { type: integer, default: 200 }
+                failure_threshold: { type: integer, minimum: 1, maximum: 10, default: 3 }
+                is_active:         { type: boolean, default: true }
+                is_public:         { type: boolean, default: false }
+      responses:
+        '201':
+          description: Monitor created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  monitor: { $ref: '#/components/schemas/Monitor' }
+
+  /monitors/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Monitors]
+      summary: Get a monitor by ID
+      responses:
+        '200':
+          description: Monitor details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  monitor: { $ref: '#/components/schemas/Monitor' }
+        '404': { description: Not found }
+    patch:
+      tags: [Monitors]
+      summary: Update a monitor
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:              { type: string }
+                url:               { type: string, format: uri }
+                method:            { type: string, enum: [GET, HEAD] }
+                interval_seconds:  { type: integer }
+                timeout_ms:        { type: integer }
+                expected_status:   { type: integer }
+                failure_threshold: { type: integer }
+                is_active:         { type: boolean }
+                is_public:         { type: boolean }
+      responses:
+        '200':
+          description: Updated monitor
+    delete:
+      tags: [Monitors]
+      summary: Delete a monitor
+      responses:
+        '204': { description: Deleted }
+        '404': { description: Not found }
+
+  /monitors/{id}/checks:
+    get:
+      tags: [Monitors]
+      summary: Get recent checks for a monitor
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 100, maximum: 500 }
+      responses:
+        '200':
+          description: Check list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  checks:
+                    type: array
+                    items: { $ref: '#/components/schemas/Check' }
+
+  /monitors/{id}/incidents:
+    get:
+      tags: [Monitors]
+      summary: Get incident history for a monitor
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Incident list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  incidents:
+                    type: array
+                    items: { $ref: '#/components/schemas/Incident' }
+
+  /monitors/{id}/stats:
+    get:
+      tags: [Stats]
+      summary: Get uptime and latency stats
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: window
+          in: query
+          schema: { type: string, enum: [24h, 7d, 30d], default: 24h }
+      responses:
+        '200':
+          description: Stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stats:
+                    type: object
+                    properties:
+                      total_checks:    { type: integer }
+                      uptime_pct:      { type: number }
+                      avg_latency_ms:  { type: number }
+                      p95_latency_ms:  { type: number }
+                  daily_uptime:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        day:       { type: string, format: date }
+                        uptime_pct:{ type: number }
