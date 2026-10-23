@@ -10,7 +10,9 @@ const envSchema = z.object({
 
   REDIS_URL: z.string().url().default('redis://localhost:6379'),
 
-  JWT_SECRET:     z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
+  JWT_SECRET: process.env.NODE_ENV === 'test'
+    ? z.string().min(32).default('test_jwt_secret_that_is_at_least_32_characters_long')
+    : z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   JWT_EXPIRES_IN: z.string().default('1h'),
 
   SMTP_HOST: z.string().optional(),
